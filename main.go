@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"database/sql"
 
@@ -11,23 +12,28 @@ import (
 	_ "github.com/lib/pq"
 )
 
-type album struct {
-	ID     string  `json:"id"`
-	Title  string  `json:"title"`
-	Artist string  `json:"artist"`
-	Price  float64 `json:"price"`
+type PostRequest struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	ImageUrl    string `json:"image_url"`
+}
+type PostResponse struct {
+	ID          string    `json:"id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	ImageUrl    string    `json:"image_url"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 const (
-	host     = "8080"
-	port     = 5432
+	host     = "localhost"
+	port     = 5439
 	user     = "postgres"
-	password = "password"
+	password = "depixen-pass"
 	dbname   = "postgres"
 )
 
 func OpenConnection() *sql.DB {
-	fmt.Println("successsssssssssssssssssssssssssssssddsssssssssssssssssssssssssssssssssssss")
 
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
 		"password=%s dbname=%s sslmode=disable",
@@ -47,15 +53,10 @@ func OpenConnection() *sql.DB {
 
 }
 
-var albums = []album{
-	{ID: "1", Title: "blue train", Artist: "john", Price: 434.2},
-	{ID: "2", Title: "blue train", Artist: "john", Price: 434.2},
-	{ID: "3", Title: "blue train", Artist: "john", Price: 434.2},
-}
-
 func main() {
+
 	//now := time.Now()
-	///fmt.Println(now.Format("2006-02-01"))
+	///
 
 	router := gin.Default()
 	router.GET("/albums", getAlbums)
@@ -66,24 +67,46 @@ func main() {
 }
 func getAlbums(c *gin.Context) {
 	db := OpenConnection()
+	rows, err := db.Query("SELECT * FROM tb_casestudy")
+	if err != nil {
+		fmt.Printf("there was an error in select query %v", err)
+	}
+	var response []PostResponse
+	for rows.Next() {
+		row := PostResponse{}
+		err := rows.Scan(&row.ID, &row.Title, &row.Description, &row.ImageUrl, &row.CreatedAt)
+		if err != nil {
+			fmt.Printf("there was an error in scan operation %v", err)
+			c.IndentedJSON(http.StatusInternalServerError, nil)
 
-	c.IndentedJSON(http.StatusOK, albums)
+		}
+		response = append(response, row)
+	}
+	c.IndentedJSON(http.StatusOK, response)
 
 	defer db.Close()
 
 }
+
 func postAlbums(c *gin.Context) {
 	db := OpenConnection()
 
-	var newAlbum album
+	var PostRequest PostRequest
 
-	if err := c.BindJSON(&newAlbum); err != nil {
+	if err := c.BindJSON(&PostRequest); err != nil {
 		return
 	}
-	fmt.Println(newAlbum)
+	epoch := time.Now().Format("2006-01-02 15:04:05.000000")
 
-	albums = append(albums, newAlbum)
-	c.IndentedJSON(http.StatusCreated, newAlbum)
+	insertDynStmt := `insert into "tb_casestudy"("title", "description","image_url","created_at") values($1,$2,$3,$4)`
+	_, err := db.Exec(insertDynStmt, PostRequest.Title, PostRequest.Description, PostRequest.ImageUrl, epoch)
+
+	if err != nil {
+		fmt.Printf("there was an error %v", err)
+
+	}
+
+	c.IndentedJSON(http.StatusCreated, PostRequest)
 	defer db.Close()
 
 }
